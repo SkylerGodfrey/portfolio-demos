@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MagicMirror module demo</title>
+    <!--
+      Static MagicMirror module harness (portfolio demo pipeline).
+
+      Renders a single MMM-* module offline, with no MagicMirror install and no
+      node_helper, driven by demo.config.json. Override the fixture with
+      ?config=<url>. See pipeline/mmm-harness/harness.js and docs/demo-adapters.md.
+
+      Bundle layout produced by the MMM adapter (pipeline/adapter-mmm.template.yml):
+        index.html          (this file)
+        harness.css
+        harness.js
+        demo.config.json    (the fixture — vendored per project repo)
+        module/             (the module's own files, copied in by the adapter)
+    -->
+    <link rel="stylesheet" href="harness.css" />
+  </head>
+  <body>
+    <div id="mirror" class="mirror"></div>
+    <script src="harness.js"></script>
+  </body>
+</html>
