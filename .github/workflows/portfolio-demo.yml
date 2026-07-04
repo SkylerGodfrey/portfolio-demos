@@ -1,0 +1,267 @@
+name: Portfolio Demo Publish
+
+# Reusable workflow that builds a flagged project's demo bundle and publishes it
+# to the public `portfolio-demos` storage repo, then triggers a rebuild of the
+# portfolio site so the new demo goes live at skylergodfrey.com/demos/<slug>/.
+#
+# Source of truth : repository-definitions/pipeline/portfolio-demo.yml
+# Hosted at       : SkylerGodfrey/portfolio-demos/.github/workflows/portfolio-demo.yml
+#                   (deployed by Terraform via github_repository_file — see
+#                    repos/portfolio-demos/terragrunt.hcl)
+# Called by       : each flagged project repo, via a ~12-line caller workflow
+#                   (see pipeline/caller-workflow.template.yml)
+#
+# Why a PUBLIC host repo: a private repo's reusable workflows can only be called
+# by other PRIVATE repos owned by the same account. Public repos cannot consume
+# a private reusable workflow, and several showcased repos are (or will become)
+# public. Hosting the workflow in the public portfolio-demos repo lets BOTH
+# public and private project repos call it. See docs/demo-pipeline.md.
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        description: 'Path to the portfolio-demo config file in the caller repo.'
+        type: string
+        default: 'portfolio-demo.json'
+      node-version:
+        description: 'Node.js version set up before running the build command.'
+        type: string
+        default: '20'
+      size-cap-mb:
+        description: 'Maximum allowed size of the built bundle, in megabytes.'
+        type: number
+        default: 50
+    secrets:
+      PORTFOLIO_PIPELINE_TOKEN:
+        description: >-
+          Fine-grained PAT with Contents:write on portfolio-demos (to publish the
+          bundle) and Contents:write on portfolio (to send the repository_dispatch
+          rebuild trigger).
+        required: true
+
+# The job's built-in GITHUB_TOKEN only needs to read the caller repo for checkout.
+# All cross-repo writes use PORTFOLIO_PIPELINE_TOKEN.
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize publishes so concurrent runs from different projects don't race on
+  # the single shared storage repo. Do not cancel an in-progress publish.
+  group: portfolio-demos-publish
+  cancel-in-progress: false
+
+env:
+  DEMOS_REPO: SkylerGodfrey/portfolio-demos
+  PORTFOLIO_REPO: SkylerGodfrey/portfolio
+  DEMOS_BASE_URL: https://skylergodfrey.com/demos
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@v4
+
+      - name: Read demo config
+        id: cfg
+        env:
+          CONFIG_PATH: ${{ inputs.config-path }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "$CONFIG_PATH" ]; then
+            echo "::error::Config file '$CONFIG_PATH' not found in ${GITHUB_REPOSITORY}."
+            exit 1
+          fi
+          SLUG=$(jq -r '.slug // empty' "$CONFIG_PATH")
+          [ -z "$SLUG" ] && SLUG="${GITHUB_REPOSITORY##*/}"
+          BUILD_CMD=$(jq -r '.buildCommand // empty' "$CONFIG_PATH")
+          OUTPUT_DIR=$(jq -r '.outputDir // empty' "$CONFIG_PATH")
+          PREVIEW_CLIP=$(jq -r '.previewClip // empty' "$CONFIG_PATH")
+          CAPTURE_SCRIPT=$(jq -r '.captureScript // empty' "$CONFIG_PATH")
+          if [ -z "$BUILD_CMD" ] || [ -z "$OUTPUT_DIR" ]; then
+            echo "::error::Config must define both 'buildCommand' and 'outputDir'."
+            exit 1
+          fi
+          {
+            echo "slug=$SLUG"
+            echo "build_cmd=$BUILD_CMD"
+            echo "output_dir=$OUTPUT_DIR"
+            echo "preview_clip=$PREVIEW_CLIP"
+            echo "capture_script=$CAPTURE_SCRIPT"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved slug=$SLUG outputDir=$OUTPUT_DIR"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Run build command
+        env:
+          BUILD_CMD: ${{ steps.cfg.outputs.build_cmd }}
+        run: |
+          set -euo pipefail
+          echo "Running build command: $BUILD_CMD"
+          bash -c "$BUILD_CMD"
+
+      - name: Validate bundle
+        env:
+          OUTPUT_DIR: ${{ steps.cfg.outputs.output_dir }}
+          SIZE_CAP_MB: ${{ inputs.size-cap-mb }}
+        run: |
+          set -euo pipefail
+          if [ ! -d "$OUTPUT_DIR" ]; then
+            echo "::error::Output directory '$OUTPUT_DIR' does not exist after the build."
+            exit 1
+          fi
+          if [ ! -f "$OUTPUT_DIR/index.html" ]; then
+            echo "::error::'$OUTPUT_DIR/index.html' is missing — a demo bundle must have an index.html entry point."
+            exit 1
+          fi
+          SIZE_KB=$(du -sk "$OUTPUT_DIR" | cut -f1)
+          CAP_KB=$(( SIZE_CAP_MB * 1024 ))
+          if [ "$SIZE_KB" -gt "$CAP_KB" ]; then
+            echo "::error::Bundle is ${SIZE_KB}KB which exceeds the ${SIZE_CAP_MB}MB cap."
+            exit 1
+          fi
+          echo "Bundle OK: ${SIZE_KB}KB (cap ${SIZE_CAP_MB}MB)."
+
+      # Auto-capture a preview clip ONLY when the contract has no manual
+      # previewClip. capture-preview.mjs is the SAME file Terraform deploys into
+      # portfolio-demos/pipeline/, fetched here from that public repo at @main so
+      # the source of truth stays in repository-definitions (the reusable workflow
+      # itself is called @main, so the raw file is in lockstep with this YAML).
+      #
+      # Robustness: this whole step MUST NOT fail the publish. capture-preview.mjs
+      # soft-fails (warning + exit 0, no output file) on any capture problem, and
+      # every command below is guarded so a missing preview clip degrades to
+      # previewClipUrl=null rather than failing the run.
+      - name: Capture preview clip
+        id: capture
+        if: steps.cfg.outputs.preview_clip == ''
+        env:
+          OUTPUT_DIR: ${{ steps.cfg.outputs.output_dir }}
+          CAPTURE_SCRIPT: ${{ steps.cfg.outputs.capture_script }}
+          MAX_CLIP_BYTES: 4194304
+        run: |
+          # Intentionally NOT `set -e`: a capture failure must never fail publish.
+          set -uo pipefail
+          CAP_DIR="$RUNNER_TEMP/capture"
+          rm -rf "$CAP_DIR"; mkdir -p "$CAP_DIR"
+          SCRIPT_URL="https://raw.githubusercontent.com/${DEMOS_REPO}/main/pipeline/capture-preview.mjs"
+          if ! curl -fsSL "$SCRIPT_URL" -o "$CAP_DIR/capture-preview.mjs"; then
+            echo "::warning title=Preview capture skipped::could not download capture-preview.mjs from ${DEMOS_REPO}."
+            echo "captured=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ( cd "$CAP_DIR" && npm init -y >/dev/null 2>&1 || true )
+          if ! ( cd "$CAP_DIR" && npm install --no-audit --no-fund puppeteer@^23 >install.log 2>&1 ); then
+            echo "::warning title=Preview capture skipped::puppeteer install failed (see log below)."
+            tail -n 20 "$CAP_DIR/install.log" || true
+            echo "captured=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          OUT="$RUNNER_TEMP/preview.webm"
+          rm -f "$OUT"
+          CAP_ARGS=(--bundle "$GITHUB_WORKSPACE/$OUTPUT_DIR" --out "$OUT" --max-bytes "$MAX_CLIP_BYTES")
+          if [ -n "$CAPTURE_SCRIPT" ]; then
+            CAP_ARGS+=(--capture-script "$GITHUB_WORKSPACE/$CAPTURE_SCRIPT")
+          fi
+          # Run node FROM the scratch dir so capture-preview.mjs resolves puppeteer
+          # from CAP_DIR/node_modules (it requires from process.cwd()).
+          ( cd "$CAP_DIR" && node "$CAP_DIR/capture-preview.mjs" "${CAP_ARGS[@]}" ) || true
+          if [ -s "$OUT" ]; then
+            echo "captured=$OUT" >> "$GITHUB_OUTPUT"
+            echo "Captured preview clip: $(du -h "$OUT" | cut -f1)."
+          else
+            echo "captured=" >> "$GITHUB_OUTPUT"
+            echo "No preview clip captured — previewClipUrl will be null."
+          fi
+
+      - name: Assemble publish directory
+        id: assemble
+        env:
+          SLUG: ${{ steps.cfg.outputs.slug }}
+          OUTPUT_DIR: ${{ steps.cfg.outputs.output_dir }}
+          PREVIEW_CLIP: ${{ steps.cfg.outputs.preview_clip }}
+          CAPTURED_CLIP: ${{ steps.capture.outputs.captured }}
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/stage/$SLUG"
+          rm -rf "$STAGE"; mkdir -p "$STAGE"
+          cp -R "$OUTPUT_DIR/." "$STAGE/"
+          # Preview-clip precedence: manual previewClip > auto-captured clip > null.
+          PREVIEW_URL="null"
+          if [ -n "$PREVIEW_CLIP" ]; then
+            if [ ! -f "$PREVIEW_CLIP" ]; then
+              echo "::error::previewClip '$PREVIEW_CLIP' declared in config but not found in the repo."
+              exit 1
+            fi
+            CLIP_NAME=$(basename "$PREVIEW_CLIP")
+            cp "$PREVIEW_CLIP" "$STAGE/$CLIP_NAME"
+            PREVIEW_URL="\"$DEMOS_BASE_URL/$SLUG/$CLIP_NAME\""
+          elif [ -n "$CAPTURED_CLIP" ] && [ -s "$CAPTURED_CLIP" ]; then
+            cp "$CAPTURED_CLIP" "$STAGE/preview.webm"
+            PREVIEW_URL="\"$DEMOS_BASE_URL/$SLUG/preview.webm\""
+            echo "Using auto-captured preview clip."
+          fi
+          # manifest.json shape MUST match portfolio src/lib/types.ts -> DemoManifest
+          # { demoUrl: string; previewClipUrl: string | null }
+          cat > "$STAGE/manifest.json" <<EOF
+          {
+            "demoUrl": "$DEMOS_BASE_URL/$SLUG/",
+            "previewClipUrl": $PREVIEW_URL
+          }
+          EOF
+          echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
+          echo "Assembled bundle + manifest for $SLUG."
+
+      - name: Publish to portfolio-demos
+        env:
+          GH_TOKEN: ${{ secrets.PORTFOLIO_PIPELINE_TOKEN }}
+          SLUG: ${{ steps.cfg.outputs.slug }}
+          STAGE: ${{ steps.assemble.outputs.stage }}
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/demos-repo"
+          rm -rf "$WORK"
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${DEMOS_REPO}.git" "$WORK"
+          cd "$WORK"
+          git config user.name "portfolio-demo-bot"
+          git config user.email "portfolio-demo-bot@users.noreply.github.com"
+          rm -rf "./$SLUG"
+          mkdir -p "./$SLUG"
+          cp -R "$STAGE/." "./$SLUG/"
+          git add "./$SLUG"
+          if git diff --cached --quiet; then
+            echo "No changes to publish for $SLUG."
+            exit 0
+          fi
+          git commit -m "Publish demo: $SLUG (${GITHUB_REPOSITORY}@${GITHUB_SHA})"
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          # Retry to tolerate concurrent publishes from other project repos.
+          for i in 1 2 3 4 5; do
+            if git push origin "HEAD:$BRANCH"; then
+              echo "Published $SLUG."
+              exit 0
+            fi
+            echo "Push failed (attempt $i/5) — fetching latest and rebasing."
+            git pull --rebase origin "$BRANCH" || true
+          done
+          echo "::error::Could not push to ${DEMOS_REPO} after 5 attempts."
+          exit 1
+
+      - name: Trigger portfolio rebuild
+        env:
+          GH_TOKEN: ${{ secrets.PORTFOLIO_PIPELINE_TOKEN }}
+          SLUG: ${{ steps.cfg.outputs.slug }}
+        run: |
+          set -euo pipefail
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${PORTFOLIO_REPO}/dispatches" \
+            -d "$(jq -nc --arg slug "$SLUG" '{event_type:"portfolio-content-updated",client_payload:{slug:$slug}}')"
+          echo "Dispatched portfolio-content-updated for $SLUG."
