@@ -1,0 +1,78 @@
+# =============================================================================
+# Stack adapter: Godot 4.x HTML5/WASM export → static demo bundle (PORT-16)
+#
+# Copy this file into a flagged Godot project repo at:
+#   .github/workflows/portfolio-demo.yml
+#
+# WHAT AN "ADAPTER" IS HERE
+# -------------------------
+# The reusable publish workflow (SkylerGodfrey/portfolio-demos …/portfolio-demo.yml)
+# is stack-agnostic: on its own runner it checks out the caller repo, runs the
+# `buildCommand` from portfolio-demo.json, and publishes `outputDir` (which must
+# contain index.html). It is intentionally NOT modified per stack.
+#
+# The Godot adapter is therefore: this caller workflow (below) + a `buildCommand`
+# that installs a headless Godot toolchain, runs the Web export into `outputDir`,
+# and injects the Cross-Origin-Isolation shim. See docs/demo-adapters.md for the
+# vendored export script, the export_presets.cfg preset, and the COOP/COEP fix.
+#
+# INTEGRATION DECISION — export runs INSIDE buildCommand (direct download)
+# ------------------------------------------------------------------------
+# The task's preferred `chickensoft-games/setup-godot` action is a composite
+# GitHub Action: it can only run as a workflow *step*. But a job that calls a
+# reusable workflow (`jobs.demo.uses:`) cannot also run steps, and jobs do not
+# share a filesystem — the reusable workflow re-checks-out the repo and runs the
+# build on its own runner. So any Godot toolchain installed by a step here would
+# be absent when the export actually runs. That leaves exactly one clean, working
+# integration: the export is part of `buildCommand`, which direct-downloads the
+# headless Godot editor + Web export templates (pinned to 4.3-stable). This is
+# also what docs/demo-pipeline.md's "Stack notes" already anticipate for Godot.
+# (portfolio-demo.json's buildCommand does the real work; it is NOT a no-op.)
+#
+# CROSS-ORIGIN ISOLATION (critical for Godot 4 web + GitHub Pages)
+# ----------------------------------------------------------------
+# Godot 4 web exports use SharedArrayBuffer, which requires a cross-origin
+# isolated context (COOP: same-origin + COEP: require-corp response headers).
+# GitHub Pages / the site's static host cannot set those headers, so the export
+# would fail to start. The build injects gzuidhof/coi-serviceworker — a service
+# worker that reloads the page with the isolation headers applied client-side —
+# as the FIRST <head> script in index.html. Details + the alternative
+# export_presets.cfg "Head Include" approach are in docs/demo-adapters.md.
+#
+# PREREQUISITES IN THE PROJECT REPO
+# ---------------------------------
+#   1. portfolio-demo.json at the repo root, e.g.:
+#        {
+#          "buildCommand": "bash scripts/godot-export.sh demo-web",
+#          "outputDir": "demo-web",
+#          "previewClip": "media/preview.webm"   // optional
+#        }
+#   2. scripts/godot-export.sh — vendored; installs Godot 4.3-stable headless +
+#      Web export templates, runs `godot --headless --export-release "Web"
+#      demo-web/index.html`, and injects coi-serviceworker. Full script in
+#      docs/demo-adapters.md.
+#   3. export_presets.cfg with a preset named "Web" (see docs/demo-adapters.md).
+#   4. An Actions secret PORTFOLIO_PIPELINE_TOKEN (fine-grained PAT — see docs/demo-pipeline.md).
+#
+# NOTE ON BUNDLE SIZE: Godot WASM bundles can be tens of MB. The reusable
+# workflow's default cap is 50 MB; raise it with `with: size-cap-mb: <n>` below
+# if a demo legitimately exceeds it.
+# =============================================================================
+
+name: Publish portfolio demo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  demo:
+    uses: SkylerGodfrey/portfolio-demos/.github/workflows/portfolio-demo.yml@main
+    # Optional overrides:
+    #   with:
+    #     config-path: portfolio-demo.json
+    #     node-version: '20'
+    #     size-cap-mb: 80        # Godot WASM bundles are large
+    secrets:
+      PORTFOLIO_PIPELINE_TOKEN: ${{ secrets.PORTFOLIO_PIPELINE_TOKEN }}
