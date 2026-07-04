@@ -1,0 +1,68 @@
+# =============================================================================
+# Stack adapter: MagicMirror module → static demo bundle (PORT-17)
+#
+# Copy this file into a flagged MMM-* project repo at:
+#   .github/workflows/portfolio-demo.yml
+#
+# WHAT AN "ADAPTER" IS HERE
+# -------------------------
+# The reusable publish workflow (SkylerGodfrey/portfolio-demos …/portfolio-demo.yml)
+# is stack-agnostic: on its own runner it checks out the caller repo, runs the
+# `buildCommand` from portfolio-demo.json, and publishes `outputDir` (which must
+# contain index.html). It is intentionally NOT modified per stack.
+#
+# So a "stack adapter" is the small set of caller-side pieces that make a given
+# stack's build emit a static bundle the reusable workflow can publish:
+#   1. this caller workflow (below) — identical in shape to the generic template;
+#   2. a `buildCommand` that assembles the bundle (see portfolio-demo.json below);
+#   3. the static MMM harness, fetched at build time from the public
+#      portfolio-demos repo, where repository-definitions deploys
+#      pipeline/mmm-harness/** (index.html, harness.js, harness.css);
+#   4. a `demo.config.json` fixture, vendored in the project repo, that scripts
+#      the module's inputs so it renders meaningful content offline.
+#
+# The harness stubs the MagicMirror front-end API (Module.register, lifecycle,
+# notifications, this.file, config merge) and needs NO MagicMirror install and
+# NO node_helper — it is fully static at runtime. Full guide + the vendored
+# build script and fixture authoring: docs/demo-adapters.md.
+#
+# WHY THE BUILD LIVES IN buildCommand (not in a step here)
+# --------------------------------------------------------
+# A reusable workflow is invoked at the job level (`jobs.demo.uses:`). A job that
+# calls a reusable workflow cannot also run its own steps, and jobs do not share
+# a filesystem — so anything this workflow's steps produced would not be visible
+# when the reusable workflow re-checks-out and runs the build on its own runner.
+# Therefore all bundle assembly must happen inside `buildCommand`.
+#
+# PREREQUISITES IN THE PROJECT REPO
+# ---------------------------------
+#   1. portfolio-demo.json at the repo root, e.g.:
+#        {
+#          "buildCommand": "bash scripts/demo-build.sh demo-dist",
+#          "outputDir": "demo-dist",
+#          "previewClip": "media/preview.webm"   // optional
+#        }
+#   2. scripts/demo-build.sh — vendored; fetches the harness, copies the module
+#      front-end files into demo-dist/module/, and drops in demo.config.json.
+#      Full script in docs/demo-adapters.md.
+#   3. demo.config.json — the fixture (see pipeline/mmm-harness/demo.config.example.json).
+#   4. An Actions secret PORTFOLIO_PIPELINE_TOKEN (fine-grained PAT — see docs/demo-pipeline.md).
+# =============================================================================
+
+name: Publish portfolio demo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  demo:
+    uses: SkylerGodfrey/portfolio-demos/.github/workflows/portfolio-demo.yml@main
+    # Optional overrides:
+    #   with:
+    #     config-path: portfolio-demo.json
+    #     node-version: '20'
+    #     size-cap-mb: 50
+    secrets:
+      PORTFOLIO_PIPELINE_TOKEN: ${{ secrets.PORTFOLIO_PIPELINE_TOKEN }}
