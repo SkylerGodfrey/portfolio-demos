@@ -1,0 +1,30 @@
+{
+  "$comment": "Example MMM harness fixture. Copy to your repo as demo.config.json, edit for your module, and the MMM adapter copies it next to index.html. The harness reads it at runtime (override with ?config=<url>). 'kind' is 'notification' (default) or 'socket'; 'at' is ms after mount. See docs/demo-adapters.md.",
+  "module": "MMM-Foo",
+  "file": "MMM-Foo.js",
+  "position": "top_right",
+  "header": "Foo",
+  "classes": "",
+  "viewport": { "width": 1080, "height": 1920 },
+  "config": {
+    "updateInterval": 60000,
+    "exampleOption": "value"
+  },
+  "translations": {
+    "GREETING": "Hello, {name}"
+  },
+  "notifications": [
+    {
+      "at": 400,
+      "kind": "socket",
+      "notification": "FOO_DATA",
+      "payload": { "items": ["alpha", "bravo", "charlie"], "updatedAt": "2026-07-03T12:00:00Z" }
+    },
+    {
+      "at": 1500,
+      "kind": "notification",
+      "notification": "USER_PRESENCE",
+      "payload": true
+    }
+  ]
+}
