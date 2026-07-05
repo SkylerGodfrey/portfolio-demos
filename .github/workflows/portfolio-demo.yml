@@ -147,6 +147,15 @@ jobs:
         run: |
           # Intentionally NOT `set -e`: a capture failure must never fail publish.
           set -uo pipefail
+          # ubuntu-latest runner images no longer ship ffmpeg; the capture
+          # script needs it to mux/re-encode the screencast.
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            if ! sudo apt-get install -y -qq ffmpeg >/dev/null 2>&1; then
+              echo "::warning title=Preview capture skipped::ffmpeg unavailable and install failed."
+              echo "captured=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           CAP_DIR="$RUNNER_TEMP/capture"
           rm -rf "$CAP_DIR"; mkdir -p "$CAP_DIR"
           SCRIPT_URL="https://raw.githubusercontent.com/${DEMOS_REPO}/main/pipeline/capture-preview.mjs"
