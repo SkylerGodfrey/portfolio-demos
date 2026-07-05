@@ -1,0 +1,258 @@
+/* ---------------------------------------------------------------------------
+ * MagicMirror module harness — presentation layer.
+ *
+ * Approximates the MagicMirror² core CSS (main.css) closely enough that an
+ * MMM-* module renders offline the way it does on a real mirror: black screen,
+ * a 60px gutter, absolutely-positioned regions (top_left … bottom_right,
+ * fullscreen_above/below), and the .dimmed/.normal/.bright + size utility
+ * classes modules lean on.
+ *
+ * Source of truth: repository-definitions/pipeline/mmm-harness/harness.css
+ * (see docs/demo-adapters.md). Runtime-static — no fonts or assets are
+ * mandatory; a Google Fonts import is attempted for fidelity but the stack
+ * falls back to system fonts so the harness still renders fully offline.
+ * ------------------------------------------------------------------------- */
+
+@import url("https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@300;400;700&family=Roboto:wght@300;400;700&display=swap");
+
+:root {
+  --mirror-gutter: 60px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background: #000;
+  cursor: default;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* The mirror surface. Default: fill the viewport. When the fixture declares a
+   viewport (e.g. a portrait mirror), body.fixed-viewport re-sizes #mirror to
+   those exact pixels and centers it so the framing matches the real device. */
+#mirror {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+  color: #aaa;
+  font-family: "Roboto Condensed", "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 400;
+  font-size: 2em;
+  line-height: 1.5em;
+  -webkit-font-smoothing: antialiased;
+}
+
+body.fixed-viewport {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+}
+
+body.fixed-viewport #mirror {
+  position: relative;
+  inset: auto;
+  width: var(--mirror-w, 1080px);
+  height: var(--mirror-h, 1920px);
+  margin: 24px auto;
+  box-shadow: 0 0 0 2px #1a1a1a, 0 0 40px rgba(0, 0, 0, 0.8);
+}
+
+/* ----- Regions (mirror of MagicMirror main.css region rules) --------------- */
+.region {
+  position: absolute;
+}
+
+.region .container {
+  transition: transform 1s, opacity 1s;
+}
+
+.region .container:empty {
+  display: none;
+}
+
+.region.top {
+  top: var(--mirror-gutter);
+}
+
+.region.bottom {
+  bottom: var(--mirror-gutter);
+}
+
+.region.left {
+  left: var(--mirror-gutter);
+  text-align: left;
+}
+
+.region.right {
+  right: var(--mirror-gutter);
+  text-align: right;
+}
+
+.region.bar {
+  left: var(--mirror-gutter);
+  right: var(--mirror-gutter);
+  text-align: center;
+}
+
+/* top_center / bottom_center */
+.region.top.center,
+.region.bottom.center {
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.region.upper.third {
+  top: 33%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.region.middle.center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  width: calc(100% - (2 * var(--mirror-gutter)));
+}
+
+.region.lower.third {
+  bottom: 33%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+/* fullscreen_above / fullscreen_below fill the whole screen (ignore gutter). */
+.region.fullscreen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+}
+
+.region.fullscreen.above {
+  z-index: 100;
+}
+
+.region.fullscreen.below {
+  z-index: 0;
+}
+
+/* ----- Module wrapper ------------------------------------------------------ */
+.module {
+  margin-bottom: 30px;
+  transition: opacity 1s;
+}
+
+.module:last-of-type {
+  margin-bottom: 0;
+}
+
+.module.no-header .module-header {
+  display: none;
+}
+
+.module-header {
+  text-transform: uppercase;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 15px;
+  color: #999;
+  border-bottom: 1px solid #666;
+  padding-bottom: 5px;
+  margin-bottom: 10px;
+}
+
+/* ----- Text utility classes modules rely on (mirror of main.css) ---------- */
+.dimmed {
+  color: #666;
+}
+
+.normal {
+  color: #999;
+}
+
+.bright {
+  color: #fff;
+}
+
+.light {
+  font-weight: 300;
+}
+
+.thin {
+  font-weight: 100;
+}
+
+.bold {
+  font-weight: 700;
+}
+
+.xsmall {
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.small {
+  font-size: 20px;
+  line-height: 25px;
+}
+
+.medium {
+  font-size: 30px;
+  line-height: 35px;
+}
+
+.large {
+  font-size: 65px;
+  line-height: 65px;
+}
+
+.xlarge {
+  font-size: 75px;
+  line-height: 75px;
+  letter-spacing: -3px;
+}
+
+.align-left {
+  text-align: left;
+}
+
+.align-right {
+  text-align: right;
+}
+
+.align-center {
+  text-align: center;
+}
+
+/* ----- Harness-only affordances (not part of MagicMirror) ------------------ */
+.harness-error {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #ff6b6b;
+  font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 18px;
+  text-align: center;
+  background: #000;
+}

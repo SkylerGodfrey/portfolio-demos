@@ -1,0 +1,12 @@
+{
+  "name": "mmm-mascot",
+  "version": "0.1.0",
+  "description": "MagicMirror² module that renders animated pixel-art mascots on a free-form canvas overlay.",
+  "main": "MMM-Mascot.js",
+  "scripts": {
+    "lint": "echo 'no lint configured yet'"
+  },
+  "keywords": ["magicmirror", "mascot", "sprite", "pixel-art"],
+  "license": "MIT",
+  "private": true
+}

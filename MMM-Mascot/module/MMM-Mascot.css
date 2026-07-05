@@ -1,0 +1,26 @@
+.mmm-mascot-overlay {
+  /* HOM-128: absolute positioning so the overlay pins to the slot's
+     bounds directly. The MM module wrapper (.module.MMM-Mascot) has
+     position:static and no explicit height, so a `height: 100%` overlay
+     would collapse to 0; by going absolute the overlay's containing
+     block becomes the slot itself (Canvas v2 sets position:absolute on
+     slot divs). Sprites inside use percentages of the overlay, so they
+     render at slot-percentage positions regardless of wrapper height. */
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.mmm-mascot-sprite {
+  position: absolute;
+  pointer-events: none;
+}
+
+.mmm-mascot-sprite canvas {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  display: block;
+}

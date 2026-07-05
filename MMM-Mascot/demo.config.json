@@ -1,0 +1,150 @@
+{
+  "$comment": "MMM-Mascot harness fixture. Scripted socket notifications simulate the node_helper delivering a saved layout and cycling through holiday skins over ~20 s. See docs/demo-adapters.md for the fixture schema.",
+  "module": "MMM-Mascot",
+  "position": "fullscreen_below",
+  "config": {
+    "canvasSize": { "w": 1080, "h": 1920 },
+    "sprites": [],
+    "holidays": [],
+    "showDefaultSprites": true,
+    "layoutPath": ""
+  },
+  "notifications": [
+    {
+      "$comment": "~1.2 s: node_helper delivers the saved layout. Dog-brown has three animation tags; the rotation engine cycles them at random with a 1.5–3.5 s dwell. Cat and coonhound only have 'idle' but switch skins on holiday events.",
+      "at": 1200,
+      "kind": "socket",
+      "notification": "MMM_MASCOT_LAYOUT",
+      "payload": {
+        "source": "layout",
+        "document": {
+          "canvas": { "w": 1080, "h": 1920 },
+          "sprites": [
+            {
+              "id": "dog_brown",
+              "sprite": "dog-brown",
+              "x": 650,
+              "y": 820,
+              "w": 320,
+              "h": 240,
+              "rotation": {
+                "animations": ["idle", "sit", "barking-run"],
+                "minMs": 1500,
+                "maxMs": 3500
+              }
+            },
+            {
+              "id": "cat_tabby",
+              "sprite": "cat-grey-tabby",
+              "x": 80,
+              "y": 870,
+              "w": 200,
+              "h": 200
+            },
+            {
+              "id": "dog_coonhound",
+              "sprite": "dog-coonhound",
+              "x": 360,
+              "y": 890,
+              "w": 200,
+              "h": 200
+            }
+          ],
+          "holidays": []
+        }
+      }
+    },
+    {
+      "$comment": "~9 s: holiday calendar activates a July window (fixture-only date for demo purposes). Cat and coonhound switch to their halloween skins; dog-brown has no halloween variant and gracefully falls back to 'default'.",
+      "at": 9000,
+      "kind": "socket",
+      "notification": "MMM_MASCOT_LAYOUT",
+      "payload": {
+        "source": "layout",
+        "document": {
+          "canvas": { "w": 1080, "h": 1920 },
+          "sprites": [
+            {
+              "id": "dog_brown",
+              "sprite": "dog-brown",
+              "x": 650,
+              "y": 820,
+              "w": 320,
+              "h": 240,
+              "rotation": {
+                "animations": ["idle", "sit", "barking-run"],
+                "minMs": 1500,
+                "maxMs": 3500
+              }
+            },
+            {
+              "id": "cat_tabby",
+              "sprite": "cat-grey-tabby",
+              "x": 80,
+              "y": 870,
+              "w": 200,
+              "h": 200
+            },
+            {
+              "id": "dog_coonhound",
+              "sprite": "dog-coonhound",
+              "x": 360,
+              "y": 890,
+              "w": 200,
+              "h": 200
+            }
+          ],
+          "holidays": [
+            { "state": "halloween", "start": "07-01", "end": "07-31" }
+          ]
+        }
+      }
+    },
+    {
+      "$comment": "~17 s: calendar switches to christmas skin (same fixture-date trick). Cat and coonhound go festive; dog-brown again falls back to 'default'.",
+      "at": 17000,
+      "kind": "socket",
+      "notification": "MMM_MASCOT_LAYOUT",
+      "payload": {
+        "source": "layout",
+        "document": {
+          "canvas": { "w": 1080, "h": 1920 },
+          "sprites": [
+            {
+              "id": "dog_brown",
+              "sprite": "dog-brown",
+              "x": 650,
+              "y": 820,
+              "w": 320,
+              "h": 240,
+              "rotation": {
+                "animations": ["idle", "sit", "barking-run"],
+                "minMs": 1500,
+                "maxMs": 3500
+              }
+            },
+            {
+              "id": "cat_tabby",
+              "sprite": "cat-grey-tabby",
+              "x": 80,
+              "y": 870,
+              "w": 200,
+              "h": 200
+            },
+            {
+              "id": "dog_coonhound",
+              "sprite": "dog-coonhound",
+              "x": 360,
+              "y": 890,
+              "w": 200,
+              "h": 200
+            }
+          ],
+          "holidays": [
+            { "state": "christmas", "start": "07-01", "end": "07-31" }
+          ]
+        }
+      }
+    }
+  ]
+}
