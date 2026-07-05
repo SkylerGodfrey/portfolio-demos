@@ -173,6 +173,18 @@ async function defaultDriver(page) {
         window.scrollTo(0, Math.round((maxScroll * i) / steps));
         await sleep(40);
       }
+    } else {
+      // Static page with no scroll overflow: keep paint activity flowing with
+      // a slow, subtle push-in (Ken Burns). Without paints the screencast
+      // emits no frames at all, and the clip would come out empty.
+      const el = document.body;
+      el.style.transformOrigin = '50% 35%';
+      el.style.transition = 'transform 4.5s ease-in-out';
+      el.style.transform = 'scale(1.045)';
+      await sleep(4700);
+      el.style.transition = 'transform 1.5s ease-in-out';
+      el.style.transform = 'scale(1)';
+      await sleep(1600);
     }
     await sleep(700); // final idle
   });
@@ -284,12 +296,16 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport({ width: WIDTH, height: HEIGHT, deviceScaleFactor: 1 });
 
+    // Start recording BEFORE navigation: Chrome's screencast only emits
+    // frames on paint damage, so a fully static page after load can yield
+    // zero frames (and an empty file). Recording from about:blank guarantees
+    // the load-in paint is always captured, whatever the page does after.
+    const recorder = await page.screencast({ path: rawOut });
+
     await page.goto(`http://127.0.0.1:${port}/`, {
       waitUntil: 'networkidle2',
       timeout: 30000,
     });
-
-    const recorder = await page.screencast({ path: rawOut });
 
     // Race the driver against the max clip duration so a runaway captureScript
     // (or a hanging default scroll) can't stretch the recording.
